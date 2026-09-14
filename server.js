@@ -1,0 +1,198 @@
+const express = require("express");
+const path = require("path");
+const Q = require("./questionnaire");
+const db = require("./db");
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(express.json({ limit: "1mb" }));
+app.use(express.static(path.join(__dirname, "public")));
+
+const esc = Q.esc;
+
+// Serve o módulo compartilhado para o navegador
+app.get("/questionnaire.js", (req, res) => {
+  res.type("application/javascript");
+  res.sendFile(path.join(__dirname, "questionnaire.js"));
+});
+
+function layout(title, body, extraHead = "") {
+  return `<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${esc(title)}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  ${extraHead}
+</head>
+<body>
+${body}
+</body>
+</html>`;
+}
+
+// ---------------------------------------------------------------------------
+//  Formulário (wizard client-side)
+// ---------------------------------------------------------------------------
+app.get("/", (req, res) => {
+  res.send(
+    layout(
+      "Levantamento Inicial – Indústria 4.0 Consistem",
+      `<div id="app"></div>
+       <script src="/questionnaire.js"></script>
+       <script src="/app.js"></script>`
+    )
+  );
+});
+
+// ---------------------------------------------------------------------------
+//  Recebimento das respostas
+// ---------------------------------------------------------------------------
+app.post("/enviar", async (req, res) => {
+  const respostas = (req.body && req.body.respostas) || {};
+
+  // Valida obrigatórios ativos (respeitando as condicionais)
+  const faltando = Q.allFields()
+    .filter((f) => f.required && Q.isActive(f, respostas))
+    .filter((f) => {
+      const v = respostas[f.id];
+      return v == null || (Array.isArray(v) ? v.length === 0 : String(v).trim() === "");
+    })
+    .map((f) => f.label);
+
+  if (faltando.length) {
+    return res.status(400).json({ ok: false, faltando });
+  }
+
+  let diag;
+  try {
+    diag = Q.gerarDiagnostico(respostas);
+    await db.salvar({
+      empresa: respostas.empresa,
+      responsavel: respostas.responsavel,
+      email: respostas.email,
+      complexidade: diag.complexidade.nivel,
+      respostas,
+    });
+  } catch (err) {
+    console.error("Erro ao salvar:", err.message);
+    return res.status(500).json({ ok: false, erro: "Falha ao salvar. Tente novamente." });
+  }
+
+  res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+//  Admin (Basic Auth)
+// ---------------------------------------------------------------------------
+function adminAuth(req, res, next) {
+  const user = process.env.ADMIN_USER || "admin";
+  const pass = process.env.ADMIN_PASSWORD;
+  if (!pass) return res.status(500).send("Configure ADMIN_PASSWORD para acessar o admin.");
+  const [scheme, encoded] = (req.headers.authorization || "").split(" ");
+  if (scheme === "Basic" && encoded) {
+    const [u, p] = Buffer.from(encoded, "base64").toString().split(":");
+    if (u === user && p === pass) return next();
+  }
+  res.set("WWW-Authenticate", 'Basic realm="Admin", charset="UTF-8"');
+  return res.status(401).send("Acesso restrito.");
+}
+
+const badgeClass = { Baixa: "baixa", "Média": "media", Alta: "alta" };
+
+app.get("/admin", adminAuth, async (req, res) => {
+  let rows;
+  try { rows = await db.listar(); }
+  catch (err) { return res.status(500).send("Banco indisponível: " + esc(err.message)); }
+
+  const linhas = rows.length
+    ? rows.map((r) => `
+      <tr>
+        <td>${r.id}</td>
+        <td>${esc(r.empresa || "—")}</td>
+        <td>${esc(r.responsavel || "—")}</td>
+        <td><span class="badge ${badgeClass[r.complexidade] || ""}">${esc(r.complexidade || "—")}</span></td>
+        <td>${new Date(r.criado_em).toLocaleString("pt-BR")}</td>
+        <td><a class="link" href="/admin/resposta/${r.id}">abrir</a></td>
+      </tr>`).join("")
+    : `<tr><td colspan="6" class="empty">Nenhum levantamento ainda.</td></tr>`;
+
+  res.send(layout("Levantamentos", `
+    <main class="page admin">
+      <header class="admin-head">
+        <div><p class="eyebrow">Consistem · Indústria 4.0</p><h1>Levantamentos recebidos</h1></div>
+        <div class="admin-actions">
+          <span class="count">${rows.length} no total</span>
+          <a class="btn ghost" href="/admin/export.csv">Baixar CSV</a>
+        </div>
+      </header>
+      <table class="table">
+        <thead><tr><th>#</th><th>Empresa</th><th>Responsável</th><th>Complexidade</th><th>Recebido em</th><th></th></tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </main>`));
+});
+
+app.get("/admin/resposta/:id", adminAuth, async (req, res) => {
+  let r;
+  try { r = await db.buscar(req.params.id); }
+  catch (err) { return res.status(500).send("Erro: " + esc(err.message)); }
+  if (!r) return res.status(404).send(layout("Não encontrado", `<main class="page narrow"><div class="card"><h1>Não encontrado</h1><a class="btn" href="/admin">Voltar</a></div></main>`));
+
+  const respostas = r.respostas || {};
+  const diag = Q.gerarDiagnostico(respostas);
+
+  // Respostas brutas (só campos ativos e respondidos)
+  const blocos = Q.allFields()
+    .filter((f) => Q.isActive(f, respostas) && respostas[f.id] != null && respostas[f.id] !== "" && !(Array.isArray(respostas[f.id]) && respostas[f.id].length === 0))
+    .map((f) => {
+      let v = respostas[f.id];
+      if (Array.isArray(v)) v = v.join(", ");
+      return `<div class="answer"><div class="q">${esc(f.label)}</div><div class="a">${esc(v).replace(/\n/g, "<br>")}</div></div>`;
+    }).join("");
+
+  res.send(layout("Levantamento #" + r.id, `
+    <main class="page narrow admin">
+      <a class="back" href="/admin">← Todos os levantamentos</a>
+      ${Q.renderDiagnosticoHTML(diag)}
+      <details class="raw">
+        <summary>Ver todas as respostas (${new Date(r.criado_em).toLocaleString("pt-BR")})</summary>
+        <div class="answers">${blocos || "<p>Sem dados.</p>"}</div>
+      </details>
+    </main>`));
+});
+
+app.get("/admin/export.csv", adminAuth, async (req, res) => {
+  let rows;
+  try { rows = await db.todos(); }
+  catch (err) { return res.status(500).send("Erro: " + esc(err.message)); }
+
+  const fields = Q.allFields();
+  const header = ["id", "criado_em", "complexidade", ...fields.map((f) => f.id)];
+  const cell = (v) => {
+    if (v == null) v = "";
+    if (Array.isArray(v)) v = v.join("; ");
+    return `"${String(v).replace(/"/g, '""')}"`;
+  };
+  const linhas = rows.map((r) => {
+    const a = r.respostas || {};
+    return [cell(r.id), cell(new Date(r.criado_em).toISOString()), cell(r.complexidade), ...fields.map((f) => cell(a[f.id]))].join(",");
+  });
+  const csv = "\uFEFF" + [header.map(cell).join(","), ...linhas].join("\r\n");
+  res.set("Content-Type", "text/csv; charset=utf-8");
+  res.set("Content-Disposition", 'attachment; filename="levantamentos.csv"');
+  res.send(csv);
+});
+
+app.get("/health", (req, res) => res.json({ ok: true }));
+
+app.listen(PORT, () => {
+  console.log(`Servidor no ar em http://localhost:${PORT}`);
+  db.init().then(() => console.log("Banco pronto.")).catch((e) =>
+    console.warn("Aviso: banco ainda indisponível (" + e.message + "). A tabela será criada quando conectar."));
+});
