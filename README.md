@@ -65,6 +65,42 @@ A tabela do banco é criada sozinha no primeiro acesso.
 
 ---
 
+## 3.1. Notificação por e-mail (Arthur e Carlos)
+
+Quando um cliente envia o levantamento, o app manda um e-mail com assunto
+**“MES Consistem – [nome do cliente]”** e o diagnóstico no corpo, com link direto
+para o painel. Os destinatários padrão já são
+`arthur.diefenthaler@consistem.com.br` e `carlos@consistem.com.br`.
+
+Para ligar isso, defina as variáveis SMTP no serviço do app. Usando o Google
+Workspace da Consistem:
+
+1. Em uma conta de envio (ex.: `notificacoes@consistem.com.br`), com verificação
+   em duas etapas ativada, gere uma **senha de app** em
+   *Conta Google → Segurança → Senhas de app*.
+2. No Railway, no serviço do app → **Variables**, defina:
+   - `SMTP_HOST` = `smtp.gmail.com`
+   - `SMTP_PORT` = `587`
+   - `SMTP_SECURE` = `false`
+   - `SMTP_USER` = a conta de envio
+   - `SMTP_PASS` = a senha de app gerada
+   - `MAIL_FROM` = a conta de envio
+   - `MAIL_TO` = (opcional) para mudar/adicionar destinatários
+3. Redeploy.
+
+## 3.2. Fotos e vídeos das máquinas
+
+A última etapa do questionário deixa o cliente enviar fotos e vídeos das
+máquinas, painéis e etiquetas (arrastar-e-soltar ou tocar para escolher). Os
+arquivos ficam guardados no próprio PostgreSQL (nada de serviço externo), com
+preview e download no painel, e são anexados ao e-mail de notificação (até
+~18 MB por e-mail; o restante fica sempre disponível no painel).
+
+Limites: até **25 MB por arquivo** e **12 arquivos** por envio. Para vídeos
+grandes, há um campo opcional de **links** (Google Drive, YouTube, etc.).
+
+---
+
 ## 4. Rodar localmente (opcional)
 
 Precisa de um PostgreSQL local.
@@ -88,6 +124,13 @@ Acesse `http://localhost:3000`.
 | `ADMIN_PASSWORD` | Senha do painel `/admin` (**obrigatória**).             |
 | `PGSSL`          | `true` só se usar a URL pública/externa do Postgres.    |
 | `PORT`           | Porta do servidor (o Railway define automaticamente).   |
+| `SMTP_HOST`      | Servidor SMTP de envio (ex.: `smtp.gmail.com`).         |
+| `SMTP_PORT`      | Porta SMTP (`587` STARTTLS ou `465` SSL).               |
+| `SMTP_SECURE`    | `true` apenas na porta 465.                             |
+| `SMTP_USER`      | Conta de envio.                                         |
+| `SMTP_PASS`      | Senha de app da conta de envio.                         |
+| `MAIL_FROM`      | Remetente exibido (padrão: `SMTP_USER`).                |
+| `MAIL_TO`        | Destinatários (padrão: Arthur e Carlos).                |
 
 ---
 

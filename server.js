@@ -1,10 +1,18 @@
 const express = require("express");
 const path = require("path");
+const multer = require("multer");
 const Q = require("./questionnaire");
 const db = require("./db");
+const mailer = require("./mailer");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+const MAX_MB = 25;
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_MB * 1024 * 1024, files: 12 },
+});
 
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -53,39 +61,100 @@ app.get("/", (req, res) => {
 // ---------------------------------------------------------------------------
 //  Recebimento das respostas
 // ---------------------------------------------------------------------------
-app.post("/enviar", async (req, res) => {
-  const respostas = (req.body && req.body.respostas) || {};
-
-  // Valida obrigatórios ativos (respeitando as condicionais)
-  const faltando = Q.allFields()
-    .filter((f) => f.required && Q.isActive(f, respostas))
-    .filter((f) => {
-      const v = respostas[f.id];
-      return v == null || (Array.isArray(v) ? v.length === 0 : String(v).trim() === "");
-    })
-    .map((f) => f.label);
-
-  if (faltando.length) {
-    return res.status(400).json({ ok: false, faltando });
-  }
-
-  let diag;
-  try {
-    diag = Q.gerarDiagnostico(respostas);
-    await db.salvar({
-      empresa: respostas.empresa,
-      responsavel: respostas.responsavel,
-      email: respostas.email,
-      complexidade: diag.complexidade.nivel,
-      respostas,
+app.post(
+  "/enviar",
+  (req, res, next) => {
+    upload.array("anexos", 12)(req, res, (err) => {
+      if (err) {
+        const msg = err.code === "LIMIT_FILE_SIZE" ? `Cada arquivo pode ter no máximo ${MAX_MB} MB.`
+          : err.code === "LIMIT_FILE_COUNT" ? "Muitos arquivos (máximo 12)."
+          : "Falha no upload dos arquivos.";
+        return res.status(400).json({ ok: false, erro: msg });
+      }
+      next();
     });
-  } catch (err) {
-    console.error("Erro ao salvar:", err.message);
-    return res.status(500).json({ ok: false, erro: "Falha ao salvar. Tente novamente." });
-  }
+  },
+  async (req, res) => {
+    // respostas chega como string (multipart) ou objeto (json)
+    let respostas = {};
+    try {
+      const raw = req.body && req.body.respostas;
+      respostas = typeof raw === "string" ? JSON.parse(raw) : raw || {};
+    } catch (e) {
+      return res.status(400).json({ ok: false, erro: "Dados inválidos." });
+    }
 
-  res.json({ ok: true });
-});
+    const faltando = Q.allFields()
+      .filter((f) => f.required && Q.isActive(f, respostas))
+      .filter((f) => {
+        const v = respostas[f.id];
+        return v == null || (Array.isArray(v) ? v.length === 0 : String(v).trim() === "");
+      })
+      .map((f) => f.label);
+    if (faltando.length) return res.status(400).json({ ok: false, faltando });
+
+    let diag, novoId;
+    try {
+      diag = Q.gerarDiagnostico(respostas);
+      novoId = await db.salvar({
+        empresa: respostas.empresa,
+        responsavel: respostas.responsavel,
+        email: respostas.email,
+        complexidade: diag.complexidade.nivel,
+        respostas,
+      });
+    } catch (err) {
+      console.error("Erro ao salvar:", err.code || "", err.message);
+      return res.status(500).json({ ok: false, erro: "Falha ao salvar. Tente novamente." });
+    }
+
+    // Salva as fotos/vídeos (não bloqueia a resposta se algum falhar)
+    const arquivos = req.files || [];
+    for (const f of arquivos) {
+      try {
+        await db.salvarAnexo({ levantamentoId: novoId, nome: f.originalname, tipo: f.mimetype, tamanho: f.size, dados: f.buffer });
+      } catch (e) {
+        console.error("Falha ao salvar anexo:", e.code || "", e.message);
+      }
+    }
+
+    // Notificação por e-mail (não bloqueia a resposta ao cliente se falhar)
+    try {
+      if (mailer.isConfigured()) {
+        const proto = (req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
+        const host = req.headers["x-forwarded-host"] || req.headers.host;
+        const base = host ? proto + "://" + host : "";
+        const adminUrl = base ? base + "/admin/resposta/" + novoId : "";
+        const cliente = respostas.empresa || "Novo levantamento";
+        const anexosInfo = arquivos.length ? `${arquivos.length} arquivo(s) de mídia enviados pelo cliente.` : "";
+
+        // Anexa ao e-mail respeitando um teto de ~18 MB (limite dos provedores)
+        const anexosEmail = [];
+        let acc = 0;
+        for (const f of arquivos) {
+          if (acc + f.size <= 18 * 1024 * 1024) {
+            anexosEmail.push({ filename: f.originalname, content: f.buffer, contentType: f.mimetype });
+            acc += f.size;
+          }
+        }
+
+        await mailer.enviar({
+          subject: "MES Consistem – " + cliente,
+          html: Q.renderDiagnosticoEmailHTML(diag, { adminUrl, anexosInfo }),
+          text: Q.renderDiagnosticoTexto(diag) + (anexosInfo ? "\n\n" + anexosInfo : "") + (adminUrl ? "\n\nAbrir no painel: " + adminUrl : ""),
+          attachments: anexosEmail,
+        });
+        console.log("Notificação enviada para: " + mailer.destinatarios());
+      } else {
+        console.warn("E-mail não configurado (SMTP_HOST/SMTP_USER). Notificação não enviada.");
+      }
+    } catch (mailErr) {
+      console.error("Falha ao enviar e-mail de notificação:", mailErr.message);
+    }
+
+    res.json({ ok: true });
+  }
+);
 
 // ---------------------------------------------------------------------------
 //  Admin (Basic Auth)
@@ -117,10 +186,11 @@ app.get("/admin", adminAuth, async (req, res) => {
         <td>${esc(r.empresa || "—")}</td>
         <td>${esc(r.responsavel || "—")}</td>
         <td><span class="badge ${badgeClass[r.complexidade] || ""}">${esc(r.complexidade || "—")}</span></td>
+        <td>${Number(r.anexos) > 0 ? '<span class="clip">' + r.anexos + "</span>" : "—"}</td>
         <td>${new Date(r.criado_em).toLocaleString("pt-BR")}</td>
         <td><a class="link" href="/admin/resposta/${r.id}">abrir</a></td>
       </tr>`).join("")
-    : `<tr><td colspan="6" class="empty">Nenhum levantamento ainda.</td></tr>`;
+    : `<tr><td colspan="7" class="empty">Nenhum levantamento ainda.</td></tr>`;
 
   res.send(layout("Levantamentos", `
     <main class="page admin">
@@ -132,7 +202,7 @@ app.get("/admin", adminAuth, async (req, res) => {
         </div>
       </header>
       <table class="table">
-        <thead><tr><th>#</th><th>Empresa</th><th>Responsável</th><th>Complexidade</th><th>Recebido em</th><th></th></tr></thead>
+        <thead><tr><th>#</th><th>Empresa</th><th>Responsável</th><th>Complexidade</th><th>Mídia</th><th>Recebido em</th><th></th></tr></thead>
         <tbody>${linhas}</tbody>
       </table>
     </main>`));
@@ -147,6 +217,23 @@ app.get("/admin/resposta/:id", adminAuth, async (req, res) => {
   const respostas = r.respostas || {};
   const diag = Q.gerarDiagnostico(respostas);
 
+  let anexos = [];
+  try { anexos = await db.listarAnexos(r.id); } catch (e) { /* ignora */ }
+  const midia = anexos.length ? `
+    <section class="anexos-sec">
+      <h3 class="anexos-titulo">Fotos e vídeos (${anexos.length})</h3>
+      <div class="anexos-grid">
+        ${anexos.map((a) => {
+          const url = `/admin/anexo/${a.id}`;
+          const tipo = a.tipo || "";
+          const media = tipo.startsWith("image/") ? `<img src="${url}" alt="${esc(a.nome || "")}" loading="lazy">`
+            : tipo.startsWith("video/") ? `<video src="${url}" controls preload="metadata"></video>`
+            : `<div class="anexo-file">arquivo</div>`;
+          return `<figure class="anexo">${media}<figcaption><a href="${url}" target="_blank" rel="noopener">${esc(a.nome || "abrir")}</a></figcaption></figure>`;
+        }).join("")}
+      </div>
+    </section>` : "";
+
   // Respostas brutas (só campos ativos e respondidos)
   const blocos = Q.allFields()
     .filter((f) => Q.isActive(f, respostas) && respostas[f.id] != null && respostas[f.id] !== "" && !(Array.isArray(respostas[f.id]) && respostas[f.id].length === 0))
@@ -160,11 +247,22 @@ app.get("/admin/resposta/:id", adminAuth, async (req, res) => {
     <main class="page narrow admin">
       <a class="back" href="/admin">← Todos os levantamentos</a>
       ${Q.renderDiagnosticoHTML(diag)}
+      ${midia}
       <details class="raw">
         <summary>Ver todas as respostas (${new Date(r.criado_em).toLocaleString("pt-BR")})</summary>
         <div class="answers">${blocos || "<p>Sem dados.</p>"}</div>
       </details>
     </main>`));
+});
+
+app.get("/admin/anexo/:id", adminAuth, async (req, res) => {
+  let a;
+  try { a = await db.buscarAnexo(req.params.id); }
+  catch (err) { return res.status(500).send("Erro: " + esc(err.message)); }
+  if (!a) return res.status(404).send("Anexo não encontrado.");
+  res.set("Content-Type", a.tipo || "application/octet-stream");
+  res.set("Content-Disposition", `inline; filename="${String(a.nome || "anexo").replace(/"/g, "")}"`);
+  res.send(a.dados);
 });
 
 app.get("/admin/export.csv", adminAuth, async (req, res) => {
@@ -193,6 +291,13 @@ app.get("/health", (req, res) => res.json({ ok: true }));
 
 app.listen(PORT, () => {
   console.log(`Servidor no ar em http://localhost:${PORT}`);
-  db.init().then(() => console.log("Banco pronto.")).catch((e) =>
-    console.warn("Aviso: banco ainda indisponível (" + e.message + "). A tabela será criada quando conectar."));
+  if (!process.env.DATABASE_URL) {
+    console.warn(
+      "ATENÇÃO: DATABASE_URL não está definida. No serviço do app (Railway), " +
+      "crie a variável DATABASE_URL com valor ${{Postgres.DATABASE_URL}} e faça redeploy."
+    );
+  }
+  db.init()
+    .then(() => console.log("Banco pronto."))
+    .catch((e) => console.error("Falha ao preparar o banco:", e.code || "", e.message));
 });

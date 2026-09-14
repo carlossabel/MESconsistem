@@ -1,12 +1,14 @@
 {
   "name": "levantamento-industria40-consistem",
-  "version": "1.0.0",
-  "description": "Questionário guiado de levantamento inicial para Indústria 4.0 (Consistem), com perguntas condicionais, diagnóstico automático e painel de respostas.",
+  "version": "1.2.0",
+  "description": "Questionário guiado de levantamento inicial para Indústria 4.0 (Consistem): enxuto, com perguntas condicionais, upload de fotos/vídeos, diagnóstico automático, painel de respostas e notificação por e-mail.",
   "private": true,
   "engines": { "node": ">=18" },
   "scripts": { "start": "node server.js" },
   "dependencies": {
     "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "nodemailer": "^6.9.14",
     "pg": "^8.12.0"
   }
 }

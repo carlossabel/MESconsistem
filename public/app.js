@@ -8,6 +8,8 @@
   var step = 0;
   var mode = "intro"; // intro | steps | review | done
   var diag = null;
+  var arquivos = [];  // fotos/vídeos selecionados (persistem entre etapas)
+  var MAX_MB = 25;
 
   function el(html) {
     var t = document.createElement("template");
@@ -26,6 +28,19 @@
   }
 
   function renderIntro() {
+    var fases = [
+      { n: "01", nome: "Monitorar", texto: "Conectamos as máquinas e iniciamos a coleta automática de dados de produção, paradas e desempenho. Uma implantação pouco intrusiva, sem alterar a rotina atual da operação." },
+      { n: "02", nome: "Integrar", texto: "Integramos máquinas, ERP e operadores, relacionando os dados às ordens de produção. Entram apontamentos, motivos de parada, refugo, planejado × realizado, eficiência e OEE." },
+      { n: "03", nome: "Otimizar", texto: "Transformamos os dados em gestão e ação, com gestão à vista em TVs e dashboards, alertas, qualidade, rastreabilidade, automações e inteligência, apoiando a melhoria contínua da operação." },
+    ];
+    var fasesHTML = fases.map(function (f) {
+      return '<article class="fase">' +
+        '<span class="fase-n">Fase ' + f.n + '</span>' +
+        '<h3>' + f.nome + '</h3>' +
+        '<p>' + f.texto + '</p>' +
+      '</article>';
+    }).join("");
+
     app.appendChild(el(
       '<main class="page intro-page">' +
         '<div class="hero">' +
@@ -35,10 +50,21 @@
           'escolhermos uma linha para um projeto piloto e prepararmos uma proposta sob medida.</p>' +
           '<ul class="facts">' +
             '<li><strong>' + STEPS.length + '</strong> etapas rápidas</li>' +
-            '<li><strong>10–15</strong> minutos</li>' +
+            '<li><strong>5–10</strong> minutos</li>' +
             '<li>Ao final, um <strong>diagnóstico</strong> resumido</li>' +
           '</ul>' +
-          '<button class="btn lg" id="start">Começar</button>' +
+        '</div>' +
+        '<section class="jornada">' +
+          '<div class="jornada-head">' +
+            '<p class="eyebrow">Como funciona</p>' +
+            '<h2>Jornada de Implantação</h2>' +
+          '</div>' +
+          '<div class="fases">' + fasesHTML + '</div>' +
+          '<p class="jornada-foot">Começamos com baixo impacto, conectamos os processos e evoluímos ' +
+          'para uma fábrica cada vez mais visível, integrada e eficiente.</p>' +
+        '</section>' +
+        '<div class="intro-cta">' +
+          '<button class="btn lg" id="start">Começar o levantamento</button>' +
         '</div>' +
       '</main>'
     ));
@@ -112,6 +138,14 @@
       control = '<div class="options">' + f.options.map(function (o) {
         return '<label class="option"><input type="checkbox" name="' + id + '" data-fid="' + id + '" value="' + escAttr(o) + '"><span>' + Q.esc(o) + '</span></label>';
       }).join("") + '</div>';
+    } else if (f.type === "file") {
+      control =
+        '<div class="dropzone" data-drop="' + id + '">' +
+          '<input type="file" data-fileinput="' + id + '" accept="' + escAttr(f.accept || "") + '"' + (f.multiple ? " multiple" : "") + ' hidden>' +
+          '<div class="dz-inner"><div class="dz-ico">+</div>' +
+          '<p class="dz-text">Arraste aqui ou <span class="dz-link">toque para escolher</span></p></div>' +
+        '</div>' +
+        '<div class="file-list" data-filelist="' + id + '"></div>';
     } else {
       var type = ["email", "tel", "number", "date"].indexOf(f.type) >= 0 ? f.type : "text";
       var extra = (f.min != null ? ' min="' + escAttr(f.min) + '"' : "") + (f.placeholder ? ' placeholder="' + escAttr(f.placeholder) + '"' : "");
@@ -131,6 +165,7 @@
   function hydrate(s) {
     s.fields.forEach(function (f) {
       if (f.type === "info") return;
+      if (f.type === "file") { wireFile(f); return; }
       var saved = answers[f.id];
       var nodes = app.querySelectorAll('[data-fid="' + f.id + '"]');
 
@@ -149,6 +184,47 @@
         }
       }
     });
+  }
+
+  // ------------------------------------------------------------ upload de mídia
+  function wireFile(f) {
+    var dz = app.querySelector('[data-drop="' + f.id + '"]');
+    var input = app.querySelector('[data-fileinput="' + f.id + '"]');
+    if (!dz || !input) return;
+    dz.addEventListener("click", function () { input.click(); });
+    dz.addEventListener("dragover", function (e) { e.preventDefault(); dz.classList.add("drag"); });
+    dz.addEventListener("dragleave", function () { dz.classList.remove("drag"); });
+    dz.addEventListener("drop", function (e) { e.preventDefault(); dz.classList.remove("drag"); addFiles(f.id, e.dataTransfer.files); });
+    input.addEventListener("change", function () { addFiles(f.id, input.files); input.value = ""; });
+    refreshFileList(f.id);
+  }
+
+  function addFiles(id, list) {
+    var rejeitados = [];
+    Array.prototype.forEach.call(list, function (file) {
+      if (file.size > MAX_MB * 1024 * 1024) { rejeitados.push(file.name); return; }
+      if (arquivos.length >= 12) { rejeitados.push(file.name); return; }
+      arquivos.push(file);
+    });
+    refreshFileList(id);
+    if (rejeitados.length) alert("Não adicionados (máx. " + MAX_MB + " MB cada, até 12 arquivos): " + rejeitados.join(", "));
+  }
+
+  function refreshFileList(id) {
+    var list = app.querySelector('[data-filelist="' + id + '"]');
+    if (!list) return;
+    list.innerHTML = "";
+    arquivos.forEach(function (file, i) {
+      var chip = el('<div class="file-chip"><span class="fc-name">' + Q.esc(file.name) + '</span><span class="fc-size">' + fmtSize(file.size) + '</span><button type="button" class="fc-x" aria-label="Remover">×</button></div>');
+      chip.querySelector(".fc-x").onclick = function () { arquivos.splice(i, 1); refreshFileList(id); };
+      list.appendChild(chip);
+    });
+  }
+
+  function fmtSize(b) {
+    if (b < 1024) return b + " B";
+    if (b < 1024 * 1024) return Math.round(b / 1024) + " KB";
+    return (b / (1024 * 1024)).toFixed(1) + " MB";
   }
 
   function collect(f) {
@@ -232,11 +308,11 @@
   function enviar() {
     var btn = document.getElementById("send");
     btn.disabled = true; btn.textContent = "Enviando...";
-    fetch("/enviar", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ respostas: answers }),
-    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+    var fd = new FormData();
+    fd.append("respostas", JSON.stringify(answers));
+    arquivos.forEach(function (file) { fd.append("anexos", file, file.name); });
+    fetch("/enviar", { method: "POST", body: fd })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
         if (res.ok && res.j.ok) { mode = "done"; render(); scrollTop(); }
         else {
