@@ -8,7 +8,7 @@
   var step = 0;
   var mode = "intro"; // intro | steps | review | done
   var diag = null;
-  var arquivos = [];  // fotos/vídeos selecionados (persistem entre etapas)
+  var mediaStore = {}; // fotos/vídeos por item: mediaStore["maquinas"][idx] = [File,...]
   var MAX_MB = 25;
 
   function el(html) {
@@ -116,6 +116,7 @@
 
   // Cria o HTML de um campo
   function renderField(f) {
+    if (f.type === "repeater") return renderRepeater(f);
     if (f.type === "info") {
       return el('<div class="field-info" data-fid="' + f.id + '"><p class="subhead">' + Q.esc(f.label) + '</p></div>');
     }
@@ -161,11 +162,70 @@
     return wrap;
   }
 
+  // ---------------------------------------------------------- cadastro repetível
+  function renderSubfield(repId, idx, sf, item) {
+    var name = repId + "_" + idx + "_" + sf.id;
+    var key = repId + ":" + idx + ":" + sf.id;
+    var saved = item ? item[sf.id] : undefined;
+    var control;
+    if (sf.type === "radio") {
+      control = '<div class="options">' + sf.options.map(function (o) {
+        var c = saved === o ? " checked" : "";
+        return '<label class="option"><input type="radio" name="' + name + '" data-sub="' + key + '" value="' + escAttr(o) + '"' + c + '><span>' + Q.esc(o) + '</span></label>';
+      }).join("") + '</div>';
+    } else if (sf.type === "checkbox") {
+      var savedArr = Array.isArray(saved) ? saved : [];
+      control = '<div class="options">' + sf.options.map(function (o) {
+        var c = savedArr.indexOf(o) >= 0 ? " checked" : "";
+        return '<label class="option"><input type="checkbox" name="' + name + '" data-sub="' + key + '" value="' + escAttr(o) + '"' + c + '><span>' + Q.esc(o) + '</span></label>';
+      }).join("") + '</div>';
+    } else if (sf.type === "textarea") {
+      control = '<textarea data-sub="' + key + '" rows="2">' + Q.esc(saved || "") + '</textarea>';
+    } else {
+      var ph = sf.placeholder ? ' placeholder="' + escAttr(sf.placeholder) + '"' : "";
+      control = '<input type="text" data-sub="' + key + '"' + ph + ' value="' + escAttr(saved || "") + '">';
+    }
+    return '<div class="subfield"><label>' + Q.esc(sf.label) + '</label>' + control + '</div>';
+  }
+
+  function renderRepeater(f) {
+    var items = answers[f.id] || (answers[f.id] = []);
+    if (!mediaStore[f.id]) mediaStore[f.id] = [];
+
+    var cards = items.map(function (item, idx) {
+      var sub = f.subfields.map(function (sf) { return renderSubfield(f.id, idx, sf, item); }).join("");
+      var media = f.media ?
+        '<div class="rep-media">' +
+          '<span class="rep-media-label">Fotos / vídeos desta ' + Q.esc(f.itemLabel.toLowerCase()) + '</span>' +
+          '<div class="dropzone" data-drop="' + f.id + ':' + idx + '">' +
+            '<input type="file" data-fileinput="' + f.id + ':' + idx + '" accept="image/*,video/*" multiple hidden>' +
+            '<div class="dz-inner"><div class="dz-ico">+</div>' +
+            '<p class="dz-text">Arraste aqui ou <span class="dz-link">toque para escolher</span></p></div>' +
+          '</div>' +
+          '<div class="file-list" data-filelist="' + f.id + ':' + idx + '"></div>' +
+        '</div>' : "";
+      return '<div class="rep-item">' +
+        '<div class="rep-head"><span class="rep-title">' + Q.esc(f.itemLabel) + ' ' + (idx + 1) + '</span>' +
+        '<button type="button" class="rep-remove" data-remove="' + f.id + ':' + idx + '">Remover</button></div>' +
+        '<div class="rep-fields">' + sub + '</div>' + media +
+      '</div>';
+    }).join("");
+
+    return el(
+      '<div class="field repeater" data-field="' + f.id + '">' +
+        '<label>' + Q.esc(f.label) + '</label>' +
+        (f.help ? '<p class="help">' + Q.esc(f.help) + '</p>' : "") +
+        '<div class="rep-items">' + cards + '</div>' +
+        '<button type="button" class="rep-add" data-add="' + f.id + '">+ ' + Q.esc(f.addLabel || "Adicionar") + '</button>' +
+      '</div>'
+    );
+  }
+
   // Preenche valores salvos e liga os listeners
   function hydrate(s) {
     s.fields.forEach(function (f) {
       if (f.type === "info") return;
-      if (f.type === "file") { wireFile(f); return; }
+      if (f.type === "repeater") { wireRepeater(f); return; }
       var saved = answers[f.id];
       var nodes = app.querySelectorAll('[data-fid="' + f.id + '"]');
 
@@ -186,37 +246,91 @@
     });
   }
 
+  // ------------------------------------------------ wiring do cadastro repetível
+  function rerenderStep() { render(); }
+
+  function wireRepeater(f) {
+    if (!mediaStore[f.id]) mediaStore[f.id] = [];
+    var addBtn = app.querySelector('[data-add="' + f.id + '"]');
+    if (addBtn) addBtn.onclick = function () {
+      (answers[f.id] = answers[f.id] || []).push({});
+      (mediaStore[f.id] = mediaStore[f.id] || []).push([]);
+      rerenderStep();
+    };
+    app.querySelectorAll('[data-remove^="' + f.id + ':"]').forEach(function (btn) {
+      btn.onclick = function () {
+        var idx = parseInt(btn.getAttribute("data-remove").split(":")[1], 10);
+        answers[f.id].splice(idx, 1);
+        if (mediaStore[f.id]) mediaStore[f.id].splice(idx, 1);
+        rerenderStep();
+      };
+    });
+    app.querySelectorAll('[data-sub^="' + f.id + ':"]').forEach(function (node) {
+      var handler = function () {
+        var parts = node.getAttribute("data-sub").split(":");
+        writeSub(f, parseInt(parts[1], 10), parts[2]);
+      };
+      node.addEventListener("input", handler);
+      node.addEventListener("change", handler);
+    });
+    (answers[f.id] || []).forEach(function (_, idx) { wireFile(f.id + ":" + idx); });
+  }
+
+  function writeSub(f, idx, sfid) {
+    var sf = f.subfields.filter(function (x) { return x.id === sfid; })[0];
+    var item = answers[f.id][idx];
+    if (!sf || !item) return;
+    var name = f.id + "_" + idx + "_" + sfid;
+    if (sf.type === "checkbox") {
+      item[sfid] = [].slice.call(app.querySelectorAll('input[name="' + name + '"]:checked')).map(function (n) { return n.value; });
+    } else if (sf.type === "radio") {
+      var sel = app.querySelector('input[name="' + name + '"]:checked');
+      item[sfid] = sel ? sel.value : "";
+    } else {
+      var node = app.querySelector('[data-sub="' + f.id + ":" + idx + ":" + sfid + '"]');
+      item[sfid] = node ? node.value : "";
+    }
+  }
+
   // ------------------------------------------------------------ upload de mídia
-  function wireFile(f) {
-    var dz = app.querySelector('[data-drop="' + f.id + '"]');
-    var input = app.querySelector('[data-fileinput="' + f.id + '"]');
+  function mediaArr(key) {
+    var parts = key.split(":"), rep = parts[0], idx = parseInt(parts[1], 10);
+    mediaStore[rep] = mediaStore[rep] || [];
+    mediaStore[rep][idx] = mediaStore[rep][idx] || [];
+    return mediaStore[rep][idx];
+  }
+
+  function wireFile(key) {
+    var dz = app.querySelector('[data-drop="' + key + '"]');
+    var input = app.querySelector('[data-fileinput="' + key + '"]');
     if (!dz || !input) return;
     dz.addEventListener("click", function () { input.click(); });
     dz.addEventListener("dragover", function (e) { e.preventDefault(); dz.classList.add("drag"); });
     dz.addEventListener("dragleave", function () { dz.classList.remove("drag"); });
-    dz.addEventListener("drop", function (e) { e.preventDefault(); dz.classList.remove("drag"); addFiles(f.id, e.dataTransfer.files); });
-    input.addEventListener("change", function () { addFiles(f.id, input.files); input.value = ""; });
-    refreshFileList(f.id);
+    dz.addEventListener("drop", function (e) { e.preventDefault(); dz.classList.remove("drag"); addFiles(key, e.dataTransfer.files); });
+    input.addEventListener("change", function () { addFiles(key, input.files); input.value = ""; });
+    refreshFileList(key);
   }
 
-  function addFiles(id, list) {
-    var rejeitados = [];
+  function addFiles(key, list) {
+    var arrq = mediaArr(key), rejeitados = [];
     Array.prototype.forEach.call(list, function (file) {
       if (file.size > MAX_MB * 1024 * 1024) { rejeitados.push(file.name); return; }
-      if (arquivos.length >= 12) { rejeitados.push(file.name); return; }
-      arquivos.push(file);
+      if (arrq.length >= 12) { rejeitados.push(file.name); return; }
+      arrq.push(file);
     });
-    refreshFileList(id);
-    if (rejeitados.length) alert("Não adicionados (máx. " + MAX_MB + " MB cada, até 12 arquivos): " + rejeitados.join(", "));
+    refreshFileList(key);
+    if (rejeitados.length) alert("Não adicionados (máx. " + MAX_MB + " MB cada, até 12 por item): " + rejeitados.join(", "));
   }
 
-  function refreshFileList(id) {
-    var list = app.querySelector('[data-filelist="' + id + '"]');
+  function refreshFileList(key) {
+    var list = app.querySelector('[data-filelist="' + key + '"]');
     if (!list) return;
+    var arrq = mediaArr(key);
     list.innerHTML = "";
-    arquivos.forEach(function (file, i) {
+    arrq.forEach(function (file, i) {
       var chip = el('<div class="file-chip"><span class="fc-name">' + Q.esc(file.name) + '</span><span class="fc-size">' + fmtSize(file.size) + '</span><button type="button" class="fc-x" aria-label="Remover">×</button></div>');
-      chip.querySelector(".fc-x").onclick = function () { arquivos.splice(i, 1); refreshFileList(id); };
+      chip.querySelector(".fc-x").onclick = function () { arrq.splice(i, 1); refreshFileList(key); };
       list.appendChild(chip);
     });
   }
@@ -310,7 +424,11 @@
     btn.disabled = true; btn.textContent = "Enviando...";
     var fd = new FormData();
     fd.append("respostas", JSON.stringify(answers));
-    arquivos.forEach(function (file) { fd.append("anexos", file, file.name); });
+    Object.keys(mediaStore).forEach(function (rep) {
+      (mediaStore[rep] || []).forEach(function (files, idx) {
+        (files || []).forEach(function (file) { fd.append("midia_" + rep + "_" + idx, file, file.name); });
+      });
+    });
     fetch("/enviar", { method: "POST", body: fd })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {

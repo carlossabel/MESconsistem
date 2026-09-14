@@ -298,3 +298,52 @@ input:focus, textarea:focus, select:focus {
 @media (max-width: 680px) {
   .fases { grid-template-columns: 1fr; }
 }
+
+/* ============================ Cadastro repetível ======================= */
+.repeater > label { display: block; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+.rep-items { display: grid; gap: 14px; margin: 6px 0 12px; }
+.rep-item {
+  border: 1px solid var(--line); border-radius: 14px; background: #fbfcfe;
+  padding: 16px 16px 14px; box-shadow: var(--shadow-sm);
+}
+.rep-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.rep-title { font-family: "Space Grotesk", sans-serif; font-weight: 600; font-size: 15px; color: var(--brand); }
+.rep-remove {
+  border: none; background: transparent; color: var(--muted); font-size: 13px; cursor: pointer;
+  padding: 4px 8px; border-radius: 7px;
+}
+.rep-remove:hover { background: #fdece9; color: var(--alta); }
+.rep-fields { display: grid; gap: 12px; }
+.subfield label { display: block; font-size: 13px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
+.subfield input[type="text"], .subfield textarea {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px;
+  font: inherit; font-size: 15px; background: #fff; box-sizing: border-box;
+}
+.subfield input[type="text"]:focus, .subfield textarea:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px rgba(14,86,208,.12); }
+.subfield .options { gap: 8px; }
+.subfield .option { padding: 9px 12px; }
+
+.rep-media { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.rep-media-label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 8px; }
+.rep-media .dropzone { padding: 18px; }
+
+.rep-add {
+  border: 1.5px dashed var(--brand); background: #f2f7fe; color: var(--brand);
+  font: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
+  padding: 11px 16px; border-radius: 10px; width: 100%; transition: background .12s;
+}
+.rep-add:hover { background: #e7f0fd; }
+
+@media (min-width: 620px) {
+  /* campos de texto curtos lado a lado dentro do item */
+  .rep-fields { grid-template-columns: 1fr 1fr; }
+  .rep-fields .subfield:has(.options), .rep-fields .subfield:has(textarea) { grid-column: 1 / -1; }
+}
+
+/* ===================== Agrupamento de mídia + parque (admin) =========== */
+.anexo-grupo { margin-top: 14px; }
+.anexo-grupo-tit { font-family: "Space Grotesk", sans-serif; font-size: 14px; color: var(--brand); margin: 12px 0 8px; }
+.parque-sec { margin-top: 24px; }
+.parque-list { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 8px; }
+.parque-list li { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 14px; color: var(--ink); background: #fff; }
+.parque-ler { color: var(--muted); font-size: 13px; }

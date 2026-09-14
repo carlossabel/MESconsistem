@@ -24,6 +24,7 @@ const CREATE_SQL = `
   CREATE TABLE IF NOT EXISTS anexos (
     id              SERIAL PRIMARY KEY,
     levantamento_id INTEGER NOT NULL,
+    ref             TEXT,
     nome            TEXT,
     tipo            TEXT,
     tamanho         INTEGER,
@@ -33,6 +34,8 @@ const CREATE_SQL = `
 
 async function ensureTable() {
   await pool.query(CREATE_SQL);
+  // Para bancos criados antes da coluna ref existir (não quebra se já existir/indisponível)
+  try { await pool.query("ALTER TABLE anexos ADD COLUMN IF NOT EXISTS ref TEXT"); } catch (e) { /* ok */ }
 }
 
 // Cria as tabelas no boot, com algumas tentativas (a rede interna do Railway
@@ -67,11 +70,11 @@ async function salvar(data) {
   }
 }
 
-async function salvarAnexo({ levantamentoId, nome, tipo, tamanho, dados }) {
+async function salvarAnexo({ levantamentoId, ref, nome, tipo, tamanho, dados }) {
   const res = await pool.query(
-    `INSERT INTO anexos (levantamento_id, nome, tipo, tamanho, dados)
-     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-    [levantamentoId, nome || null, tipo || null, tamanho || null, dados]
+    `INSERT INTO anexos (levantamento_id, ref, nome, tipo, tamanho, dados)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    [levantamentoId, ref || null, nome || null, tipo || null, tamanho || null, dados]
   );
   return res.rows[0].id;
 }
@@ -95,7 +98,7 @@ async function buscar(id) {
 
 async function listarAnexos(levantamentoId) {
   const res = await pool.query(
-    `SELECT id, nome, tipo, tamanho FROM anexos WHERE levantamento_id = $1 ORDER BY id`,
+    `SELECT id, ref, nome, tipo, tamanho FROM anexos WHERE levantamento_id = $1 ORDER BY id`,
     [levantamentoId]
   );
   return res.rows;

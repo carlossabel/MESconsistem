@@ -51,30 +51,34 @@
 
     // 2
     {
-      title: "O que resolver",
-      subtitle: "O principal que vocês querem atacar no chão de fábrica.",
+      title: "Parque de máquinas",
+      subtitle: "Cadastre as linhas e as máquinas que deseja monitorar. Em cada uma dá para anexar fotos e vídeos.",
       fields: [
         {
-          id: "problema_principal",
-          label: "Principais problemas hoje",
-          help: "Marque quantos quiser.",
-          type: "checkbox", required: true,
-          options: [
-            "Falta de informação em tempo real", "Paradas de máquina", "Baixa produtividade",
-            "Apontamentos manuais", "Controle de eficiência (OEE)", "Refugo / perdas",
-            "Rastreabilidade", "Qualidade", "Planejado x realizado", "Outros",
+          id: "linhas", type: "repeater", itemLabel: "Linha", addLabel: "Adicionar linha", media: true,
+          label: "Linhas de produção",
+          help: "Cadastre cada linha que deseja acompanhar (opcional, mas ajuda bastante).",
+          subfields: [
+            { id: "nome", label: "Nome / identificação da linha", type: "text", placeholder: "Ex.: Linha de Envase 1" },
+            { id: "produto", label: "Produto ou processo (opcional)", type: "text", placeholder: "Ex.: Iogurte 170g" },
           ],
         },
-      ],
-    },
-
-    // 3
-    {
-      title: "Parque e apontamentos",
-      subtitle: "O tamanho da operação e como a produção é registrada.",
-      fields: [
-        { id: "qtd_linhas", label: "Linhas a monitorar", type: "number", min: 0, required: true },
-        { id: "qtd_maquinas", label: "Máquinas (aprox.)", type: "number", min: 0, required: true },
+        {
+          id: "maquinas", type: "repeater", itemLabel: "Máquina", addLabel: "Adicionar máquina", media: true,
+          label: "Máquinas / equipamentos",
+          help: "Cadastre as máquinas e, principalmente, o que deseja ler de cada uma.",
+          subfields: [
+            { id: "nome", label: "Nome / identificação da máquina", type: "text", placeholder: "Ex.: Envasadora 1" },
+            { id: "linha", label: "Linha / área (opcional)", type: "text", placeholder: "Ex.: Linha de Envase 1" },
+            { id: "tipo", label: "Tipo / função (opcional)", type: "text", placeholder: "Ex.: Envasadora, forno, rotuladora" },
+            {
+              id: "ler", label: "O que deseja ler / monitorar desta máquina", type: "checkbox",
+              options: ["Ligada / parada", "Produção (contagem)", "Velocidade / ciclo", "Refugo", "Temperatura", "Pressão", "Alarmes / falhas", "Consumo de energia", "Outros"],
+            },
+            { id: "clp", label: "Possui CLP / controlador?", type: "radio", options: ["Sim", "Não", "Não sei"] },
+            { id: "fabricante", label: "Fabricante / modelo (se souber)", type: "text" },
+          ],
+        },
         {
           id: "apont_como", label: "Como os apontamentos são feitos hoje?",
           type: "checkbox",
@@ -85,7 +89,7 @@
       ],
     },
 
-    // 4
+    // 3
     {
       title: "Máquinas e dados",
       subtitle: "O quanto as máquinas já conseguem se comunicar.",
@@ -101,7 +105,7 @@
       ],
     },
 
-    // 5
+    // 4
     {
       title: "Indicadores",
       subtitle: "O que vocês querem enxergar.",
@@ -115,24 +119,16 @@
       ],
     },
 
-    // 6
+    // 5
     {
-      title: "Qualidade e infraestrutura",
-      subtitle: "Rastreabilidade e a rede no chão de fábrica.",
+      title: "Infraestrutura",
+      subtitle: "A rede e o acesso no chão de fábrica.",
       fields: [
-        { id: "rastreab", label: "Precisam de rastreabilidade por lote?", type: "radio", options: ["Sim", "Não"] },
-        {
-          id: "rastreab_itens", label: "Rastrear o quê?",
-          type: "checkbox", showIf: (r) => isYes(r, "rastreab"),
-          options: ["Matéria-prima", "Lote", "Máquina", "Operador", "Data/hora", "Parâmetros do processo", "Validade"],
-        },
         { id: "rede", label: "Existe rede próxima às máquinas?", type: "radio", required: true, options: ["Cabeada", "Wi-Fi", "Ambas", "Não", "Não sabemos"] },
-        { id: "restricao_ti", label: "Há restrições de TI para conectar equipamentos?", type: "radio", options: ["Sim", "Não", "Não sabemos"] },
-        { id: "restricao_ti_quais", label: "Quais restrições?", type: "text", showIf: (r) => isYes(r, "restricao_ti") },
       ],
     },
 
-    // 7
+    // 6
     {
       title: "Time técnico e piloto",
       subtitle: "Quem apoia no acesso às máquinas e por onde começar.",
@@ -150,25 +146,20 @@
       ],
     },
 
-    // 8
+    // 7
     {
-      title: "Fotos e vídeos",
-      subtitle: "Ajuda muito ver as máquinas, painéis e etiquetas. É opcional.",
+      title: "Observações",
+      subtitle: "Para fechar. Tudo aqui é opcional.",
       fields: [
-        {
-          id: "anexos", type: "file", label: "Fotos ou vídeos das máquinas",
-          accept: "image/*,video/*", multiple: true,
-          help: "Arraste aqui ou toque para escolher. Aceita imagens e vídeos (até 25 MB cada).",
-        },
         { id: "midia_links", label: "Links de fotos/vídeos (opcional)", type: "textarea", placeholder: "Cole aqui links do Google Drive, YouTube, etc." },
         { id: "obs_final", label: "Observações (opcional)", type: "textarea" },
       ],
     },
   ];
 
-  // Campos "de dado" (ignora info e file — file é tratado à parte no cliente)
+  // Campos "de dado" planos (ignora info, file e repeater — tratados à parte no cliente)
   function allFields() {
-    return STEPS.flatMap((s) => s.fields).filter((f) => f.type !== "info" && f.type !== "file");
+    return STEPS.flatMap((s) => s.fields).filter((f) => f.type !== "info" && f.type !== "file" && f.type !== "repeater");
   }
   function isActive(field, respostas) {
     return typeof field.showIf !== "function" || field.showIf(respostas);
@@ -197,14 +188,11 @@
     if (rede === "Não" || rede === "Não sabemos") add(2, "Infraestrutura de rede ausente ou desconhecida");
     else if (rede === "Wi-Fi") add(0.5, "Rede apenas por Wi-Fi (avaliar estabilidade industrial)");
 
-    if (isYes(r, "restricao_ti")) add(1, "Há restrições de TI para conexão à rede industrial");
+    const nMaq = (Array.isArray(r.maquinas) ? r.maquinas : []).length;
+    if (nMaq > 20) add(2, "Grande quantidade de máquinas"); else if (nMaq > 5) add(1, "Quantidade média de máquinas");
+    const nLin = (Array.isArray(r.linhas) ? r.linhas : []).length;
+    if (nLin > 3) add(1, "Muitas linhas a monitorar");
 
-    const nMaq = parseInt(val(r, "qtd_maquinas"), 10);
-    if (!isNaN(nMaq)) { if (nMaq > 20) add(2, "Grande quantidade de máquinas"); else if (nMaq > 5) add(1, "Quantidade média de máquinas"); }
-    const nLin = parseInt(val(r, "qtd_linhas"), 10);
-    if (!isNaN(nLin) && nLin > 3) add(1, "Muitas linhas a monitorar");
-
-    if (isYes(r, "rastreab")) add(1, "Necessidade de rastreabilidade por lote");
     if (val(r, "autom_por") === "Terceiros") add(1, "Automação mantida por terceiros (acesso depende de agenda externa)");
     if (val(r, "oee") !== "Sim") add(1, "OEE ainda não é calculado");
     if (val(r, "paradas_registradas") === "Não") add(0.5, "Motivos de parada não são registrados hoje");
@@ -235,8 +223,16 @@
       `Apontamento hoje: ${lista(arr(r, "apont_como"), "não informado")}.`,
       `Coleta automática de dados: ${txt("coleta_auto", "não informado")}.`,
     ]);
-    S("Principais dores", [`${lista(arr(r, "problema_principal"))}.`]);
-    S("Linhas e máquinas", [`Linhas: ${txt("qtd_linhas")} · Máquinas: ${txt("qtd_maquinas")}.`]);
+    const _linhas = Array.isArray(r.linhas) ? r.linhas : [];
+    const _maquinas = Array.isArray(r.maquinas) ? r.maquinas : [];
+    const linMaqLinhas = [
+      `Linhas cadastradas: ${_linhas.length}${_linhas.length ? " — " + _linhas.map((l) => l.nome || "sem nome").join(", ") : ""}.`,
+      `Máquinas cadastradas: ${_maquinas.length}.`,
+    ].concat(_maquinas.map((m) => {
+      const ler = m.ler && m.ler.length ? m.ler.join(", ") : "a definir";
+      return `• ${m.nome || "Máquina"}${m.tipo ? " (" + m.tipo + ")" : ""} — ler: ${ler}${m.clp ? " · CLP: " + m.clp : ""}.`;
+    }));
+    S("Linhas e máquinas", linMaqLinhas);
     S("Linha/máquina para o piloto", [
       `Candidata indicada: ${txt("linha_piloto", "a definir")}.`,
       arr(r, "poc_resultados").length ? `Resultados esperados: ${lista(arr(r, "poc_resultados"))}.` : "",
@@ -253,12 +249,8 @@
     S("Dados a coletar automaticamente", [
       val(r, "coleta_auto") === "Sim" ? "Já há coleta automática hoje." : `Desejados: ${lista(arr(r, "coleta_desejada"), "a definir")}.`,
     ]);
-    S("Qualidade e rastreabilidade", [
-      `Rastreabilidade por lote: ${txt("rastreab", "não informado")}${isYes(r, "rastreab") ? " — " + lista(arr(r, "rastreab_itens"), "itens a definir") : ""}.`,
-    ]);
     S("Infraestrutura", [
       `Rede próxima às máquinas: ${txt("rede", "não informado")}.`,
-      `Restrições de TI: ${txt("restricao_ti", "não informado")}${isYes(r, "restricao_ti") && val(r, "restricao_ti_quais") ? " — " + val(r, "restricao_ti_quais") : ""}.`,
     ]);
     S("Time técnico", [
       `Automação/elétrica por: ${txt("autom_por", "não informado")}.`,
@@ -276,14 +268,12 @@
       `Provar o valor na linha/máquina "${txt("linha_piloto", "a definir")}", com ${via}.`,
       `Coletar: ${dadosPOC}.`,
       `Disponibilizar em tempo real: ${lista(arr(r, "tempo_real"), "status, produção e OEE")}.`,
-      isYes(r, "rastreab") ? "Incluir rastreabilidade por lote." : "",
     ]);
 
     const pontos = [];
     if (val(r, "clp") === "Não" || val(r, "clp") === "Não sabemos") pontos.push("Confirmar existência e tipo de CLP nas máquinas.");
     if (inList(r, "clp", ["Sim", "Algumas"]) && val(r, "clp_rede") !== "Sim") pontos.push("Validar comunicação de rede dos CLPs.");
     if (val(r, "rede") === "Não" || val(r, "rede") === "Não sabemos") pontos.push("Prover/mapear a rede no chão de fábrica.");
-    if (isYes(r, "restricao_ti")) pontos.push("Alinhar restrições de TI com a equipe do cliente.");
     if (val(r, "autom_por") === "Terceiros") pontos.push("Agendar apoio da automação terceirizada para acesso aos sinais.");
     if (val(r, "coleta_auto") === "Não") pontos.push("Definir sinais e variáveis a coletar automaticamente.");
     if (!pontos.length) pontos.push("Nenhum bloqueio técnico crítico aparente; validar detalhes na visita técnica.");

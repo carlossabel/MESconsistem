@@ -64,10 +64,10 @@ app.get("/", (req, res) => {
 app.post(
   "/enviar",
   (req, res, next) => {
-    upload.array("anexos", 12)(req, res, (err) => {
+    upload.any()(req, res, (err) => {
       if (err) {
         const msg = err.code === "LIMIT_FILE_SIZE" ? `Cada arquivo pode ter no máximo ${MAX_MB} MB.`
-          : err.code === "LIMIT_FILE_COUNT" ? "Muitos arquivos (máximo 12)."
+          : err.code === "LIMIT_FILE_COUNT" ? "Muitos arquivos por item (máximo 12)."
           : "Falha no upload dos arquivos.";
         return res.status(400).json({ ok: false, erro: msg });
       }
@@ -108,11 +108,21 @@ app.post(
       return res.status(500).json({ ok: false, erro: "Falha ao salvar. Tente novamente." });
     }
 
+    // Rótulo do item ao qual a mídia pertence (a partir do fieldname midia_<rep>_<idx>)
+    const refDoCampo = (fieldname) => {
+      const m = /^midia_(maquinas|linhas)_(\d+)$/.exec(fieldname || "");
+      if (!m) return "Geral";
+      const rep = m[1], idx = parseInt(m[2], 10);
+      const base = rep === "maquinas" ? "Máquina" : "Linha";
+      const item = (Array.isArray(respostas[rep]) ? respostas[rep] : [])[idx] || {};
+      return base + " " + (idx + 1) + (item.nome ? " – " + item.nome : "");
+    };
+
     // Salva as fotos/vídeos (não bloqueia a resposta se algum falhar)
     const arquivos = req.files || [];
     for (const f of arquivos) {
       try {
-        await db.salvarAnexo({ levantamentoId: novoId, nome: f.originalname, tipo: f.mimetype, tamanho: f.size, dados: f.buffer });
+        await db.salvarAnexo({ levantamentoId: novoId, ref: refDoCampo(f.fieldname), nome: f.originalname, tipo: f.mimetype, tamanho: f.size, dados: f.buffer });
       } catch (e) {
         console.error("Falha ao salvar anexo:", e.code || "", e.message);
       }
@@ -219,19 +229,37 @@ app.get("/admin/resposta/:id", adminAuth, async (req, res) => {
 
   let anexos = [];
   try { anexos = await db.listarAnexos(r.id); } catch (e) { /* ignora */ }
+  const grupos = {};
+  anexos.forEach((a) => { const k = a.ref || "Geral"; (grupos[k] = grupos[k] || []).push(a); });
   const midia = anexos.length ? `
     <section class="anexos-sec">
       <h3 class="anexos-titulo">Fotos e vídeos (${anexos.length})</h3>
-      <div class="anexos-grid">
-        ${anexos.map((a) => {
-          const url = `/admin/anexo/${a.id}`;
-          const tipo = a.tipo || "";
-          const media = tipo.startsWith("image/") ? `<img src="${url}" alt="${esc(a.nome || "")}" loading="lazy">`
-            : tipo.startsWith("video/") ? `<video src="${url}" controls preload="metadata"></video>`
-            : `<div class="anexo-file">arquivo</div>`;
-          return `<figure class="anexo">${media}<figcaption><a href="${url}" target="_blank" rel="noopener">${esc(a.nome || "abrir")}</a></figcaption></figure>`;
-        }).join("")}
-      </div>
+      ${Object.keys(grupos).map((g) => `
+        <div class="anexo-grupo">
+          <h4 class="anexo-grupo-tit">${esc(g)}</h4>
+          <div class="anexos-grid">
+            ${grupos[g].map((a) => {
+              const url = `/admin/anexo/${a.id}`;
+              const tipo = a.tipo || "";
+              const media = tipo.startsWith("image/") ? `<img src="${url}" alt="${esc(a.nome || "")}" loading="lazy">`
+                : tipo.startsWith("video/") ? `<video src="${url}" controls preload="metadata"></video>`
+                : `<div class="anexo-file">arquivo</div>`;
+              return `<figure class="anexo">${media}<figcaption><a href="${url}" target="_blank" rel="noopener">${esc(a.nome || "abrir")}</a></figcaption></figure>`;
+            }).join("")}
+          </div>
+        </div>`).join("")}
+    </section>` : "";
+
+  // Parque cadastrado (linhas e máquinas)
+  const _linhas = Array.isArray(respostas.linhas) ? respostas.linhas : [];
+  const _maquinas = Array.isArray(respostas.maquinas) ? respostas.maquinas : [];
+  const parque = (_linhas.length || _maquinas.length) ? `
+    <section class="parque-sec">
+      <h3 class="anexos-titulo">Parque cadastrado</h3>
+      ${_linhas.length ? `<h4 class="anexo-grupo-tit">Linhas (${_linhas.length})</h4>
+        <ul class="parque-list">${_linhas.map((l) => `<li><strong>${esc(l.nome || "Linha")}</strong>${l.produto ? " — " + esc(l.produto) : ""}</li>`).join("")}</ul>` : ""}
+      ${_maquinas.length ? `<h4 class="anexo-grupo-tit">Máquinas (${_maquinas.length})</h4>
+        <ul class="parque-list">${_maquinas.map((m) => `<li><strong>${esc(m.nome || "Máquina")}</strong>${m.tipo ? " (" + esc(m.tipo) + ")" : ""}${m.linha ? " · " + esc(m.linha) : ""}${m.clp ? " · CLP: " + esc(m.clp) : ""}${m.fabricante ? " · " + esc(m.fabricante) : ""}${(m.ler && m.ler.length) ? `<br><span class="parque-ler">Ler: ${esc(m.ler.join(", "))}</span>` : ""}</li>`).join("")}</ul>` : ""}
     </section>` : "";
 
   // Respostas brutas (só campos ativos e respondidos)
@@ -247,6 +275,7 @@ app.get("/admin/resposta/:id", adminAuth, async (req, res) => {
     <main class="page narrow admin">
       <a class="back" href="/admin">← Todos os levantamentos</a>
       ${Q.renderDiagnosticoHTML(diag)}
+      ${parque}
       ${midia}
       <details class="raw">
         <summary>Ver todas as respostas (${new Date(r.criado_em).toLocaleString("pt-BR")})</summary>
@@ -271,7 +300,7 @@ app.get("/admin/export.csv", adminAuth, async (req, res) => {
   catch (err) { return res.status(500).send("Erro: " + esc(err.message)); }
 
   const fields = Q.allFields();
-  const header = ["id", "criado_em", "complexidade", ...fields.map((f) => f.id)];
+  const header = ["id", "criado_em", "complexidade", "qtd_linhas", "qtd_maquinas", ...fields.map((f) => f.id)];
   const cell = (v) => {
     if (v == null) v = "";
     if (Array.isArray(v)) v = v.join("; ");
@@ -279,7 +308,9 @@ app.get("/admin/export.csv", adminAuth, async (req, res) => {
   };
   const linhas = rows.map((r) => {
     const a = r.respostas || {};
-    return [cell(r.id), cell(new Date(r.criado_em).toISOString()), cell(r.complexidade), ...fields.map((f) => cell(a[f.id]))].join(",");
+    const nl = Array.isArray(a.linhas) ? a.linhas.length : 0;
+    const nm = Array.isArray(a.maquinas) ? a.maquinas.length : 0;
+    return [cell(r.id), cell(new Date(r.criado_em).toISOString()), cell(r.complexidade), cell(nl), cell(nm), ...fields.map((f) => cell(a[f.id]))].join(",");
   });
   const csv = "\uFEFF" + [header.map(cell).join(","), ...linhas].join("\r\n");
   res.set("Content-Type", "text/csv; charset=utf-8");

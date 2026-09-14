@@ -88,16 +88,18 @@ Workspace da Consistem:
    - `MAIL_TO` = (opcional) para mudar/adicionar destinatários
 3. Redeploy.
 
-## 3.2. Fotos e vídeos das máquinas
+## 3.2. Cadastro de máquinas/linhas e mídia
 
-A última etapa do questionário deixa o cliente enviar fotos e vídeos das
-máquinas, painéis e etiquetas (arrastar-e-soltar ou tocar para escolher). Os
-arquivos ficam guardados no próprio PostgreSQL (nada de serviço externo), com
-preview e download no painel, e são anexados ao e-mail de notificação (até
-~18 MB por e-mail; o restante fica sempre disponível no painel).
+Na etapa **Parque de máquinas**, o cliente cadastra cada linha e cada máquina
+com um botão **"+ Adicionar"**. Em cada máquina informa o que deseja ler/monitorar
+(status, produção, ciclo, refugo, temperatura, alarmes, etc.), se possui CLP, o
+fabricante e pode anexar **fotos e vídeos daquela máquina**. As mídias ficam
+guardadas no próprio PostgreSQL e, no painel, aparecem **agrupadas por máquina/linha**.
+São anexadas também ao e-mail de notificação (até ~18 MB por e-mail; o restante
+fica no painel).
 
-Limites: até **25 MB por arquivo** e **12 arquivos** por envio. Para vídeos
-grandes, há um campo opcional de **links** (Google Drive, YouTube, etc.).
+Limites: até **25 MB por arquivo** e **12 arquivos por item**. A última etapa tem
+ainda um campo opcional de **links** (Google Drive, YouTube) para vídeos grandes.
 
 ---
 
