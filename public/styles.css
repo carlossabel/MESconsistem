@@ -347,3 +347,21 @@ input:focus, textarea:focus, select:focus {
 .parque-list { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 8px; }
 .parque-list li { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 14px; color: var(--ink); background: #fff; }
 .parque-ler { color: var(--muted); font-size: 13px; }
+
+/* -------- estados do item: editando x salvo -------- */
+.rep-item-actions { margin-top: 14px; }
+.rep-save {
+  border: none; background: var(--brand); color: #fff; font: inherit; font-weight: 600; font-size: 14px;
+  padding: 10px 18px; border-radius: 9px; cursor: pointer; box-shadow: 0 8px 18px rgba(14,86,208,.20);
+}
+.rep-save:hover { filter: brightness(1.05); }
+.rep-err { color: var(--alta); font-size: 13px; margin: 10px 0 0; }
+
+.rep-item.saved { padding: 12px 14px; background: #fff; }
+.rep-saved { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.rep-saved-main { min-width: 0; }
+.rep-saved-nome { display: block; font-weight: 600; color: var(--ink); }
+.rep-saved-sub { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+.rep-saved-acts { display: flex; gap: 6px; flex: none; }
+.rep-edit { border: none; background: #eef4fe; color: var(--brand); font: inherit; font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+.rep-edit:hover { background: #e2edfd; }

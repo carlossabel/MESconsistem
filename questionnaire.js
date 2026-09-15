@@ -72,10 +72,10 @@
             { id: "linha", label: "Linha / área (opcional)", type: "text", placeholder: "Ex.: Linha de Envase 1" },
             { id: "tipo", label: "Tipo / função (opcional)", type: "text", placeholder: "Ex.: Envasadora, forno, rotuladora" },
             {
-              id: "ler", label: "O que deseja ler / monitorar desta máquina", type: "checkbox",
+              id: "ler", label: "O que deseja ler / monitorar desta máquina", type: "checkbox", sum: "Ler",
               options: ["Ligada / parada", "Produção (contagem)", "Velocidade / ciclo", "Refugo", "Temperatura", "Pressão", "Alarmes / falhas", "Consumo de energia", "Outros"],
             },
-            { id: "clp", label: "Possui CLP / controlador?", type: "radio", options: ["Sim", "Não", "Não sei"] },
+            { id: "clp", label: "Possui CLP / controlador?", type: "radio", sum: "CLP", options: ["Sim", "Não", "Não sei"] },
             { id: "fabricante", label: "Fabricante / modelo (se souber)", type: "text" },
           ],
         },

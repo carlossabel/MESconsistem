@@ -103,7 +103,7 @@
     } else { nav.appendChild(el('<span></span>')); }
 
     var next = el('<button class="btn" type="button">' + (step === total - 1 ? "Ver diagnóstico" : "Continuar") + '</button>');
-    next.onclick = function () { if (validateStep(s)) advance(); };
+    next.onclick = function () { if (validateStep(s)) advance(s); };
     nav.appendChild(next);
 
     card.appendChild(nav);
@@ -188,11 +188,42 @@
     return '<div class="subfield"><label>' + Q.esc(sf.label) + '</label>' + control + '</div>';
   }
 
+  function itemSummary(f, item, idx, mediaCount) {
+    var nome = item.nome || (f.itemLabel + " " + (idx + 1));
+    var bits = [];
+    f.subfields.forEach(function (sf) {
+      if (sf.id === "nome") return;
+      var v = item[sf.id];
+      if (v == null || v === "" || (Array.isArray(v) && v.length === 0)) return;
+      if (Array.isArray(v)) bits.push((sf.sum || sf.label) + ": " + v.join(", "));
+      else bits.push(sf.sum ? sf.sum + ": " + v : v);
+    });
+    if (mediaCount) bits.push(mediaCount + (mediaCount > 1 ? " mídias" : " mídia"));
+    return { nome: nome, sub: bits.join(" · ") };
+  }
+
   function renderRepeater(f) {
     var items = answers[f.id] || (answers[f.id] = []);
     if (!mediaStore[f.id]) mediaStore[f.id] = [];
+    var anyEditing = items.some(function (it) { return it._edit; });
 
     var cards = items.map(function (item, idx) {
+      var mediaCount = (mediaStore[f.id][idx] || []).length;
+
+      if (!item._edit) {
+        var s = itemSummary(f, item, idx, mediaCount);
+        return '<div class="rep-item saved">' +
+          '<div class="rep-saved">' +
+            '<div class="rep-saved-main"><span class="rep-saved-nome">' + Q.esc(s.nome) + '</span>' +
+            (s.sub ? '<span class="rep-saved-sub">' + Q.esc(s.sub) + '</span>' : "") + '</div>' +
+            '<div class="rep-saved-acts">' +
+              '<button type="button" class="rep-edit" data-edit="' + f.id + ':' + idx + '">Editar</button>' +
+              '<button type="button" class="rep-remove" data-remove="' + f.id + ':' + idx + '">Remover</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      }
+
       var sub = f.subfields.map(function (sf) { return renderSubfield(f.id, idx, sf, item); }).join("");
       var media = f.media ?
         '<div class="rep-media">' +
@@ -204,19 +235,23 @@
           '</div>' +
           '<div class="file-list" data-filelist="' + f.id + ':' + idx + '"></div>' +
         '</div>' : "";
-      return '<div class="rep-item">' +
+      return '<div class="rep-item editing">' +
         '<div class="rep-head"><span class="rep-title">' + Q.esc(f.itemLabel) + ' ' + (idx + 1) + '</span>' +
         '<button type="button" class="rep-remove" data-remove="' + f.id + ':' + idx + '">Remover</button></div>' +
         '<div class="rep-fields">' + sub + '</div>' + media +
+        '<p class="rep-err" data-reperr="' + f.id + ':' + idx + '" hidden>Informe ao menos o nome.</p>' +
+        '<div class="rep-item-actions"><button type="button" class="rep-save" data-save="' + f.id + ':' + idx + '">Salvar ' + Q.esc(f.itemLabel.toLowerCase()) + '</button></div>' +
       '</div>';
     }).join("");
+
+    var addLabel = items.length ? "Adicionar mais " + f.itemLabel.toLowerCase() : "Adicionar " + f.itemLabel.toLowerCase();
+    var addBtn = anyEditing ? "" : '<button type="button" class="rep-add" data-add="' + f.id + '">+ ' + Q.esc(addLabel) + '</button>';
 
     return el(
       '<div class="field repeater" data-field="' + f.id + '">' +
         '<label>' + Q.esc(f.label) + '</label>' +
         (f.help ? '<p class="help">' + Q.esc(f.help) + '</p>' : "") +
-        '<div class="rep-items">' + cards + '</div>' +
-        '<button type="button" class="rep-add" data-add="' + f.id + '">+ ' + Q.esc(f.addLabel || "Adicionar") + '</button>' +
+        '<div class="rep-items">' + cards + '</div>' + addBtn +
       '</div>'
     );
   }
@@ -253,7 +288,7 @@
     if (!mediaStore[f.id]) mediaStore[f.id] = [];
     var addBtn = app.querySelector('[data-add="' + f.id + '"]');
     if (addBtn) addBtn.onclick = function () {
-      (answers[f.id] = answers[f.id] || []).push({});
+      (answers[f.id] = answers[f.id] || []).push({ _edit: true });
       (mediaStore[f.id] = mediaStore[f.id] || []).push([]);
       rerenderStep();
     };
@@ -265,15 +300,36 @@
         rerenderStep();
       };
     });
+    app.querySelectorAll('[data-edit^="' + f.id + ':"]').forEach(function (btn) {
+      btn.onclick = function () {
+        var idx = parseInt(btn.getAttribute("data-edit").split(":")[1], 10);
+        answers[f.id][idx]._edit = true; rerenderStep();
+      };
+    });
+    app.querySelectorAll('[data-save^="' + f.id + ':"]').forEach(function (btn) {
+      btn.onclick = function () {
+        var idx = parseInt(btn.getAttribute("data-save").split(":")[1], 10);
+        f.subfields.forEach(function (sf) { writeSub(f, idx, sf.id); });
+        var item = answers[f.id][idx];
+        if (!item.nome || !String(item.nome).trim()) {
+          var errEl = app.querySelector('[data-reperr="' + f.id + ':' + idx + '"]');
+          if (errEl) errEl.hidden = false;
+          return;
+        }
+        item._edit = false; rerenderStep();
+      };
+    });
     app.querySelectorAll('[data-sub^="' + f.id + ':"]').forEach(function (node) {
       var handler = function () {
         var parts = node.getAttribute("data-sub").split(":");
         writeSub(f, parseInt(parts[1], 10), parts[2]);
+        var errEl = app.querySelector('[data-reperr="' + f.id + ':' + parts[1] + '"]');
+        if (errEl) errEl.hidden = true;
       };
       node.addEventListener("input", handler);
       node.addEventListener("change", handler);
     });
-    (answers[f.id] || []).forEach(function (_, idx) { wireFile(f.id + ":" + idx); });
+    (answers[f.id] || []).forEach(function (it, idx) { if (it._edit) wireFile(f.id + ":" + idx); });
   }
 
   function writeSub(f, idx, sfid) {
@@ -398,9 +454,44 @@
     return true;
   }
 
-  function advance() {
+  // Remove itens de repeater totalmente vazios (sem dados e sem mídia)
+  function pruneRepeaters(s) {
+    s.fields.forEach(function (f) {
+      if (f.type !== "repeater") return;
+      var items = answers[f.id] || [];
+      for (var i = items.length - 1; i >= 0; i--) {
+        var it = items[i];
+        var hasData = f.subfields.some(function (sf) {
+          var v = it[sf.id];
+          return v != null && v !== "" && !(Array.isArray(v) && v.length === 0);
+        });
+        var hasMedia = mediaStore[f.id] && mediaStore[f.id][i] && mediaStore[f.id][i].length;
+        if (!hasData && !hasMedia) { items.splice(i, 1); if (mediaStore[f.id]) mediaStore[f.id].splice(i, 1); }
+      }
+    });
+  }
+
+  // Cópia das respostas sem os marcadores internos (_edit etc.)
+  function cleanAnswers() {
+    var out = {};
+    Object.keys(answers).forEach(function (k) {
+      var v = answers[k];
+      if (Array.isArray(v)) {
+        out[k] = v.map(function (item) {
+          if (item && typeof item === "object" && !Array.isArray(item)) {
+            var o = {}; Object.keys(item).forEach(function (kk) { if (kk.charAt(0) !== "_") o[kk] = item[kk]; }); return o;
+          }
+          return item;
+        });
+      } else out[k] = v;
+    });
+    return out;
+  }
+
+  function advance(s) {
+    pruneRepeaters(s);
     if (step < STEPS.length - 1) { step++; render(); scrollTop(); }
-    else { diag = Q.gerarDiagnostico(answers); mode = "review"; render(); scrollTop(); }
+    else { diag = Q.gerarDiagnostico(cleanAnswers()); mode = "review"; render(); scrollTop(); }
   }
 
   // ------------------------------------------------------------ review/done
@@ -423,7 +514,7 @@
     var btn = document.getElementById("send");
     btn.disabled = true; btn.textContent = "Enviando...";
     var fd = new FormData();
-    fd.append("respostas", JSON.stringify(answers));
+    fd.append("respostas", JSON.stringify(cleanAnswers()));
     Object.keys(mediaStore).forEach(function (rep) {
       (mediaStore[rep] || []).forEach(function (files, idx) {
         (files || []).forEach(function (file) { fd.append("midia_" + rep + "_" + idx, file, file.name); });
