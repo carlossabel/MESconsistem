@@ -365,3 +365,37 @@ input:focus, textarea:focus, select:focus {
 .rep-saved-acts { display: flex; gap: 6px; flex: none; }
 .rep-edit { border: none; background: #eef4fe; color: var(--brand); font: inherit; font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
 .rep-edit:hover { background: #e2edfd; }
+
+/* ============================ Banner full-bleed (hero) ================== */
+.intro-page { padding-top: 0; }
+
+.hero {
+  position: relative;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);   /* estoura o container: fora a fora */
+  border-radius: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #0b1622;
+  box-shadow: none;
+}
+.hero::before {
+  content: "";
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(180deg, rgba(9,18,30,.80) 0%, rgba(9,18,30,.88) 100%),
+    url("/hero-bg.webp") center / cover no-repeat;
+  transform: scale(1.04);          /* evita bordas com o blur */
+  filter: blur(1.5px);
+  z-index: 0;
+}
+.hero::after { content: none; }    /* remove a textura de grade antiga */
+
+.hero-inner {
+  position: relative; z-index: 1;
+  max-width: 820px; margin: 0 auto;
+  padding: 64px 20px 60px;
+}
+@media (max-width: 680px) {
+  .hero-inner { padding: 44px 18px 44px; }
+}

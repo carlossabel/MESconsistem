@@ -44,15 +44,17 @@
     app.appendChild(el(
       '<main class="page intro-page">' +
         '<div class="hero">' +
-          '<p class="eyebrow">Consistem · Indústria 4.0</p>' +
-          '<h1>Levantamento Inicial para Implantação</h1>' +
-          '<p class="lead">Uma conversa técnica guiada para entendermos seu ambiente industrial, ' +
-          'escolhermos uma linha para um projeto piloto e prepararmos uma proposta sob medida.</p>' +
-          '<ul class="facts">' +
-            '<li><strong>' + STEPS.length + '</strong> etapas rápidas</li>' +
-            '<li><strong>5–10</strong> minutos</li>' +
-            '<li>Ao final, um <strong>diagnóstico</strong> resumido</li>' +
-          '</ul>' +
+          '<div class="hero-inner">' +
+            '<p class="eyebrow">Consistem · Indústria 4.0</p>' +
+            '<h1>Levantamento Inicial para Implantação</h1>' +
+            '<p class="lead">Uma conversa técnica guiada para entendermos seu ambiente industrial, ' +
+            'escolhermos uma linha para um projeto piloto e prepararmos uma proposta sob medida.</p>' +
+            '<ul class="facts">' +
+              '<li><strong>' + STEPS.length + '</strong> etapas rápidas</li>' +
+              '<li><strong>5–10</strong> minutos</li>' +
+              '<li>Ao final, um <strong>diagnóstico</strong> resumido</li>' +
+            '</ul>' +
+          '</div>' +
         '</div>' +
         '<section class="jornada">' +
           '<div class="jornada-head">' +

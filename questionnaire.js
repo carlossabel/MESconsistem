@@ -91,26 +91,9 @@
 
     // 3
     {
-      title: "Máquinas e dados",
-      subtitle: "O quanto as máquinas já conseguem se comunicar.",
-      fields: [
-        { id: "clp", label: "As máquinas possuem CLP?", type: "radio", required: true, options: ["Sim", "Algumas", "Não", "Não sabemos"] },
-        { id: "clp_rede", label: "Há comunicação de rede disponível no CLP?", type: "radio", options: ["Sim", "Não", "Não sabemos"], showIf: (r) => inList(r, "clp", ["Sim", "Algumas"]) },
-        { id: "coleta_auto", label: "Algum dado já é coletado automaticamente das máquinas?", type: "radio", required: true, options: ["Sim", "Não"] },
-        {
-          id: "coleta_desejada", label: "O que gostariam de coletar automaticamente?",
-          type: "checkbox", showIf: (r) => val(r, "coleta_auto") === "Não",
-          options: ["Máquina ligada/parada", "Produzindo", "Quantidade produzida", "Velocidade / ciclo", "Refugo", "Temperatura", "Alarmes", "Outros"],
-        },
-      ],
-    },
-
-    // 4
-    {
       title: "Indicadores",
       subtitle: "O que vocês querem enxergar.",
       fields: [
-        { id: "oee", label: "Hoje vocês calculam o OEE?", type: "radio", options: ["Sim", "Não", "Não conhecemos o indicador"] },
         {
           id: "tempo_real", label: "O que gostariam de ver em tempo real?",
           type: "checkbox", required: true,
@@ -119,7 +102,7 @@
       ],
     },
 
-    // 5
+    // 4
     {
       title: "Infraestrutura",
       subtitle: "A rede e o acesso no chão de fábrica.",
@@ -128,13 +111,13 @@
       ],
     },
 
-    // 6
+    // 5
     {
       title: "Time técnico e piloto",
       subtitle: "Quem apoia no acesso às máquinas e por onde começar.",
       fields: [
         { id: "autom_por", label: "A automação/elétrica das máquinas é feita por:", type: "radio", options: ["Equipe interna", "Terceiros", "Ambos"] },
-        { id: "resp_tecnico", label: "Há um responsável técnico que pode nos apoiar no acesso a painéis e CLPs?", type: "radio", options: ["Sim", "Não"] },
+        { id: "resp_tecnico", label: "Hoje o técnico responsável pelas máquinas tem conhecimento de como ler os sinais das máquinas?", type: "radio", options: ["Sim", "Não"] },
         { id: "resp_tecnico_nome", label: "Nome do responsável técnico", type: "text", showIf: (r) => isYes(r, "resp_tecnico") },
         { id: "resp_tecnico_contato", label: "Contato (telefone ou e-mail)", type: "text", showIf: (r) => isYes(r, "resp_tecnico") },
         { id: "linha_piloto", label: "Se fôssemos começar por uma linha/máquina, qual seria?", type: "text" },
@@ -146,7 +129,7 @@
       ],
     },
 
-    // 7
+    // 6
     {
       title: "Observações",
       subtitle: "Para fechar. Tudo aqui é opcional.",
@@ -177,24 +160,24 @@
     const fatores = [];
     const add = (n, texto) => { score += n; if (texto) fatores.push(texto); };
 
-    const clp = val(r, "clp");
-    if (clp === "Não" || clp === "Não sabemos") add(2, "Situação dos CLPs indefinida ou inexistente");
-    else if (clp === "Algumas") add(1, "Apenas parte das máquinas possui CLP");
-    if (inList(r, "clp", ["Sim", "Algumas"]) && val(r, "clp_rede") !== "Sim") add(1, "Comunicação de rede no CLP não confirmada");
-
-    if (val(r, "coleta_auto") === "Não") add(1, "Nenhum dado é coletado automaticamente hoje");
+    const maquinas = Array.isArray(r.maquinas) ? r.maquinas : [];
+    const comCLP = maquinas.filter((m) => m.clp === "Sim").length;
+    const semCLP = maquinas.filter((m) => m.clp && m.clp !== "Sim").length; // "Não" / "Não sei"
+    const semInfoCLP = maquinas.filter((m) => !m.clp).length;
+    if (!maquinas.length) add(1, "Nenhuma máquina cadastrada para avaliar comunicação");
+    else if (comCLP === 0) add(2, "Nenhuma máquina com CLP confirmado");
+    else if (semCLP + semInfoCLP > 0) add(1, "Parte das máquinas sem CLP confirmado");
 
     const rede = val(r, "rede");
     if (rede === "Não" || rede === "Não sabemos") add(2, "Infraestrutura de rede ausente ou desconhecida");
     else if (rede === "Wi-Fi") add(0.5, "Rede apenas por Wi-Fi (avaliar estabilidade industrial)");
 
-    const nMaq = (Array.isArray(r.maquinas) ? r.maquinas : []).length;
+    const nMaq = maquinas.length;
     if (nMaq > 20) add(2, "Grande quantidade de máquinas"); else if (nMaq > 5) add(1, "Quantidade média de máquinas");
     const nLin = (Array.isArray(r.linhas) ? r.linhas : []).length;
     if (nLin > 3) add(1, "Muitas linhas a monitorar");
 
     if (val(r, "autom_por") === "Terceiros") add(1, "Automação mantida por terceiros (acesso depende de agenda externa)");
-    if (val(r, "oee") !== "Sim") add(1, "OEE ainda não é calculado");
     if (val(r, "paradas_registradas") === "Não") add(0.5, "Motivos de parada não são registrados hoje");
 
     let nivel = "Baixa";
@@ -218,13 +201,17 @@
     const secoes = [];
     const S = (titulo, linhas) => secoes.push({ titulo, linhas: linhas.filter(Boolean) });
 
+    const _linhas = Array.isArray(r.linhas) ? r.linhas : [];
+    const _maquinas = Array.isArray(r.maquinas) ? r.maquinas : [];
+    const comCLP = _maquinas.filter((m) => m.clp === "Sim").length;
+    const semCLPinfo = _maquinas.filter((m) => !m.clp || m.clp === "Não sei").length;
+    const lerUniao = [];
+    _maquinas.forEach((m) => (Array.isArray(m.ler) ? m.ler : []).forEach((x) => { if (lerUniao.indexOf(x) < 0) lerUniao.push(x); }));
+
     S("Cenário atual", [
       `Empresa: ${txt("empresa")}.`,
       `Apontamento hoje: ${lista(arr(r, "apont_como"), "não informado")}.`,
-      `Coleta automática de dados: ${txt("coleta_auto", "não informado")}.`,
     ]);
-    const _linhas = Array.isArray(r.linhas) ? r.linhas : [];
-    const _maquinas = Array.isArray(r.maquinas) ? r.maquinas : [];
     const linMaqLinhas = [
       `Linhas cadastradas: ${_linhas.length}${_linhas.length ? " — " + _linhas.map((l) => l.nome || "sem nome").join(", ") : ""}.`,
       `Máquinas cadastradas: ${_maquinas.length}.`,
@@ -243,11 +230,12 @@
         val(r, "paradas_registradas") === "Não" && val(r, "paradas_interesse") ? ` (interesse: ${val(r, "paradas_interesse")})` : ""}.`,
     ]);
     S("Comunicação das máquinas", [
-      `CLP: ${txt("clp", "não informado")}.`,
-      inList(r, "clp", ["Sim", "Algumas"]) ? `Comunicação de rede no CLP: ${txt("clp_rede", "não informado")}.` : "",
+      _maquinas.length
+        ? `CLP confirmado em ${comCLP} de ${_maquinas.length} máquina(s)${semCLPinfo ? ` (${semCLPinfo} sem CLP ou sem informação)` : ""}.`
+        : "Nenhuma máquina cadastrada para avaliar a comunicação.",
     ]);
-    S("Dados a coletar automaticamente", [
-      val(r, "coleta_auto") === "Sim" ? "Já há coleta automática hoje." : `Desejados: ${lista(arr(r, "coleta_desejada"), "a definir")}.`,
+    S("Dados desejados nas máquinas", [
+      lerUniao.length ? `A ler / monitorar: ${lerUniao.join(", ")}.` : "A definir com o cliente.",
     ]);
     S("Infraestrutura", [
       `Rede próxima às máquinas: ${txt("rede", "não informado")}.`,
@@ -260,10 +248,9 @@
     ]);
     S("Indicadores desejados", [
       `Tempo real: ${lista(arr(r, "tempo_real"), "a definir")}.`,
-      `OEE hoje: ${txt("oee", "não informado")}.`,
     ]);
-    const dadosPOC = val(r, "coleta_auto") === "Sim" ? "dados já disponíveis nas máquinas" : lista(arr(r, "coleta_desejada"), "status e produção");
-    const via = inList(r, "clp", ["Sim", "Algumas"]) ? "coleta via CLP/rede existente" : "definição do método de coleta (CLP a avaliar)";
+    const via = comCLP > 0 ? "coleta via CLP existente" : "definição do método de coleta (CLP a avaliar)";
+    const dadosPOC = lerUniao.length ? lerUniao.join(", ") : "status e produção";
     S("Escopo sugerido para a POC", [
       `Provar o valor na linha/máquina "${txt("linha_piloto", "a definir")}", com ${via}.`,
       `Coletar: ${dadosPOC}.`,
@@ -271,11 +258,12 @@
     ]);
 
     const pontos = [];
-    if (val(r, "clp") === "Não" || val(r, "clp") === "Não sabemos") pontos.push("Confirmar existência e tipo de CLP nas máquinas.");
-    if (inList(r, "clp", ["Sim", "Algumas"]) && val(r, "clp_rede") !== "Sim") pontos.push("Validar comunicação de rede dos CLPs.");
+    if (!_maquinas.length) pontos.push("Cadastrar as máquinas e o que se deseja ler de cada uma.");
+    else if (comCLP === 0) pontos.push("Confirmar existência e tipo de CLP nas máquinas.");
+    else if (semCLPinfo > 0) pontos.push("Validar CLP/comunicação das máquinas ainda sem CLP confirmado.");
     if (val(r, "rede") === "Não" || val(r, "rede") === "Não sabemos") pontos.push("Prover/mapear a rede no chão de fábrica.");
     if (val(r, "autom_por") === "Terceiros") pontos.push("Agendar apoio da automação terceirizada para acesso aos sinais.");
-    if (val(r, "coleta_auto") === "Não") pontos.push("Definir sinais e variáveis a coletar automaticamente.");
+    if (!lerUniao.length) pontos.push("Definir sinais e variáveis a coletar de cada máquina.");
     if (!pontos.length) pontos.push("Nenhum bloqueio técnico crítico aparente; validar detalhes na visita técnica.");
     S("Pontos técnicos a validar", pontos);
 
