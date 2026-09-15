@@ -320,6 +320,26 @@ app.get("/admin/export.csv", adminAuth, async (req, res) => {
 
 app.get("/health", (req, res) => res.json({ ok: true }));
 
+// Diagnóstico rápido da conexão com o banco (abra no navegador: /health/db)
+app.get("/health/db", async (req, res) => {
+  try {
+    await db.pool.query("SELECT 1");
+    res.json({ ok: true, db: "conectado", temDatabaseUrl: !!process.env.DATABASE_URL, pgssl: process.env.PGSSL === "true" });
+  } catch (e) {
+    res.status(500).json({
+      ok: false,
+      db: "sem conexão",
+      code: e.code || null,
+      erro: e.message,
+      temDatabaseUrl: !!process.env.DATABASE_URL,
+      pgssl: process.env.PGSSL === "true",
+      dica: !process.env.DATABASE_URL
+        ? "DATABASE_URL não está definida no serviço do app."
+        : "DATABASE_URL existe, mas a conexão falhou (verifique a referência do Postgres e o PGSSL).",
+    });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Servidor no ar em http://localhost:${PORT}`);
   if (!process.env.DATABASE_URL) {

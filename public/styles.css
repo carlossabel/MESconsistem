@@ -399,3 +399,19 @@ input:focus, textarea:focus, select:focus {
 @media (max-width: 680px) {
   .hero-inner { padding: 44px 18px 44px; }
 }
+
+/* -------- título do banner: maior, melhor quebra e responsivo -------- */
+.hero .eyebrow { text-shadow: 0 1px 12px rgba(0,0,0,.30); }
+.hero h1 {
+  font-size: clamp(32px, 6vw, 58px);
+  line-height: 1.04;
+  letter-spacing: -.02em;
+  margin: 10px 0 0;
+  max-width: 20ch;
+  text-wrap: balance;                 /* quebra as linhas de forma equilibrada */
+  text-shadow: 0 2px 24px rgba(0,0,0,.35);
+}
+.hero .facts { margin-top: 30px; margin-bottom: 0; }
+@media (max-width: 680px) {
+  .hero .facts { gap: 16px 22px; }
+}
